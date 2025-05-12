@@ -12,29 +12,41 @@ class CustomUserManager(BaseUserManager):
             raise ValueError(_('Email should be provided'))
         
         email=self.normalize_email(email)
+        extra_fields.setdefault('is_active',True)
+
         new_user=self.model(email=email,**extra_fields)
         new_user.set_password(password)
         new_user.save()
 
         return new_user
     
-    def create_superuser(self,email,password,**extra_fields):
+    def create_superuser(self, email, password, **extra_fields):
 
         extra_fields.setdefault('is_staff',True)
         extra_fields.setdefault('is_superuser',True)
         extra_fields.setdefault('is_active',True)
+        extra_fields.setdefault('role', 'admin')
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError(_('Superuser must have is_staff set to True'))
         if extra_fields.get('is_superuser') is not True:
             raise ValueError(_('Superuser must have is_superuser set to True'))
         
-        return self.create_user(email,password,**extra_fields)
+        return self.create_user(email, password, **extra_fields)
     
 class User(AbstractUser):
+
+    ROLE_CHOICES = [
+        ("customer", "Customer"),
+        ("restaurant_owner", "Restaurant Owner"),
+        ("delivery_agent", "Delivery Agent"),
+        ("admin", "Admin"),
+    ]
+    
     username=models.CharField(max_length=40, unique=True)
     email=models.EmailField(max_length=80, unique=True)
     phone_number=PhoneNumberField(null=False,unique=True)
+    role=models.CharField(max_length=20, choices=ROLE_CHOICES, default='customer')
 
     USERNAME_FIELD='email'
     REQUIRED_FIELDS=['username','phone_number']
@@ -42,4 +54,4 @@ class User(AbstractUser):
     objects=CustomUserManager()
 
     def __str__(self):
-        return f"<user {self.email}"
+        return f"<User ({self.email}) - {self.role}>"

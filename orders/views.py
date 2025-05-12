@@ -1,95 +1,89 @@
-from django.shortcuts import render,get_object_or_404
-from rest_framework.generics import GenericAPIView
-from rest_framework import status
+from rest_framework import viewsets, status
+from .models import Order, OrderItem
+from .serializers import (OrderItemSerializer,OrderCreateSerializer,OrderDetailSerializer,UpdateOrderStatusSerializer)
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from .permissions import IsRestaurantOwnerOrAdmin
 from rest_framework.response import Response
-from .serializers import OrderCreationSerializer, OrderDetailSerializer, UpdateOrderStatusSerializer
-from .models import Order
-from rest_framework.permissions import IsAuthenticated,IsAuthenticatedOrReadOnly,IsAdminUser
-from django.contrib.auth import get_user_model
+from rest_framework.decorators import action
 
-User=get_user_model()
-
+class OrderViewSet(viewsets.ModelViewSet):
     
-class OrderCreateListView(GenericAPIView):
-    serializer_class=OrderCreationSerializer
-    queryset=Order.objects.all()
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    queryset = Order.objects.all()
+    permission_classes = [IsAuthenticated]
 
-    def get(self,request):
-
-        orders = self.get_queryset()
-        serializer = self.serializer_class(instance=orders, many=True)
-        return Response(data=serializer.data, status=status.HTTP_200_OK)
-
-    def post(self,request):
-        serializer = self.serializer_class(data=request.data)
-        user = request.user
-
-        if serializer.is_valid():
-            serializer.save(customer=user)
-            return Response(data=serializer.data, status=status.HTTP_201_CREATED)
-        return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def get_serializer_class(self):
+        
+        if self.action == "create":
+            return OrderCreateSerializer
+        elif self.action in ["retrieve","list"]:
+            return OrderDetailSerializer
+        elif self.action in ["update", "partial_update"]:
+            return UpdateOrderStatusSerializer
+        return OrderDetailSerializer
     
-class OrderRetrieveUpdateDeleteView(GenericAPIView):
-    serializer_class=OrderDetailSerializer
-    permission_classes=[IsAdminUser]
+    def get_queryset(self):
+        
+        user = self.request.user
 
-    def get(self,request,order_id):
-        order=get_object_or_404(Order, pk=order_id)
+        if user.is_staff:
+            return Order.objects.select_related("restaurant","customer").prefetch_related("order_items__menu_item").all()
+        
+        elif user.role == "restaurant_owner":
+            return Order.objects.select_related("restaurant","customer").prefetch_related("order_items__menu_item").filter(restaurant__owner=user)
+        
+        return Order.objects.select_related("restaurant","customer").prefetch_related("order_items__menu_item").filter(customer=user)
 
-        serializer=self.serializer_class(instance=order)
-        return Response(data=serializer.data,status=status.HTTP_200_OK)
-    
-    def put(self,request,order_id):
-        order=get_object_or_404(Order, pk=order_id)
+    def perform_create(self, serializer):
+        
+        user = self.request.user
 
-        serializer=self.serializer_class(instance=order, data=request.data)
+        if not user.is_authenticated:
+            raise PermissionDenied("You must be logged in to create an order!")
+        
+        if user.role != "customer":
+            raise PermissionDenied("Only customers can create orders!")
+        
+        serializer.save(customer=user)
+
+    # Implemented because customers can still Update orders using /orders/ endpoint
+    def perform_update(self, serializer):
+        user = self.request.user
+
+        if user.role not in ["restaurant_owner", "admin"]:
+            raise PermissionDenied("You are not allowed to update orders.")
+
+        serializer.save()
+
+    @action(detail=True, methods=["PUT","PATCH"], permission_classes=[IsRestaurantOwnerOrAdmin])
+    def update_order_status(self, request, pk=None):
+
+        order = self.get_object()
+        
+        if order.order_status == "DELIVERED":
+            raise ValidationError("You cannot update a delivered order!")
+        
+        if order.order_status == "CANCELLED":
+            raise ValidationError("You cannot update a cancelled order!")
+        
+        serializer = UpdateOrderStatusSerializer(order, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response(data=serializer.data,status=status.HTTP_200_OK)
-        return Response(data=serializer.errors,status=status.HTTP_400_BAD_REQUEST)
-
-    def delete(self,request,order_id):
-        order=get_object_or_404(Order, pk=order_id)
-
-        order.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-class UpdateOrderStatusView(GenericAPIView):
-    serializer_class=UpdateOrderStatusSerializer
-    permission_classes=[IsAuthenticated,IsAdminUser]
+    @action(detail=True, methods=['PATCH'], permission_classes=[IsAuthenticated])
+    def cancel_order(self, request, pk=None):
+        order = self.get_object()
+        user = self.request.user
 
-    def put(self,request,order_id):
-        order=get_object_or_404(Order, pk=order_id)
+        if user != order.customer:
+            raise PermissionDenied("You can only cancel your own orders!")
+        
+        if order.order_status != "PENDING":
+            raise PermissionDenied("You can only cancel orders that are still pending!")
+        
+        order.order_status = "CANCELLED"
+        order.save()
 
-        serializer=self.serializer_class(data=request.data, instance=order)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(data=serializer.data,status=status.HTTP_200_OK)
-        return Response(data=serializer.errors,status=status.HTTP_400_BAD_REQUEST)
-    
-
-class UserOrderView(GenericAPIView):
-    serializer_class=OrderDetailSerializer
-    permission_classes=[IsAuthenticated,IsAdminUser]
-
-    def get(self,request,user_id):
-        user=get_object_or_404(User, pk=user_id)
-
-        orders=Order.objects.all().filter(customer=user)
-
-        serializer=self.serializer_class(instance=orders, many=True)
-        return Response(data=serializer.data,status=status.HTTP_200_OK)
-    
-
-class UserSpecificOrderView(GenericAPIView):
-    serializer_class=OrderDetailSerializer
-    permission_classes=[IsAuthenticated,IsAdminUser]
-
-    def get(self,request,user_id,order_id):
-        user=get_object_or_404(User, pk=user_id)
-
-        order=get_object_or_404(Order, customer=user, pk=order_id)
-
-        serializer=self.serializer_class(instance=order)
-        return Response(data=serializer.data,status=status.HTTP_200_OK)
+        return Response({"message": "Order cancelled successfully."}, status=status.HTTP_200_OK)

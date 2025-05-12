@@ -28,7 +28,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'authentication',
+    'restaurants',
+    'menu',
     'orders',
+    'delivery',
 
     # Thirdparty
     'rest_framework',
