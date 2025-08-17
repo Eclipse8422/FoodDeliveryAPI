@@ -31,8 +31,8 @@ class MenuItemSerializer(serializers.ModelSerializer):
         if not restaurant:
             raise serializers.ValidationError({"restaurant": "Restaurant is required."})
         
-        # if restaurant.owner != user:
-        #     raise serializers.ValidationError({"restaurant": "Only restaurant owners can add menu items!"})
+        if restaurant.owner != user:
+            raise serializers.ValidationError({"restaurant": "Only restaurant owners can add menu items!"})
 
         if MenuItem.objects.filter(
             restaurant=restaurant, name__iexact=name
@@ -47,7 +47,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
 
         request = self.context.get("request")
 
-        if request and (not request.user.is_authenticated or request.user.role == "customer"):
+        if request and (not request.user.is_authenticated or request.user.role in ["customer", "delivery_agent"]):
             data.pop('created_at', None)
             data.pop('updated_at', None)
 

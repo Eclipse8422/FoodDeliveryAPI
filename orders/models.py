@@ -4,12 +4,14 @@ from menu.models import MenuItem
 from delivery.models import DeliveryAgent
 from django.contrib.auth import get_user_model
 
+
 User = get_user_model()
 
 class Order(models.Model):
     ORDER_STATUS = (
         ('PENDING','Pending'),
         ('IN_PROGRESS','In Progress'),
+        ('READY_FOR_PICKUP', 'Ready for Pickup'),
         ('OUT_FOR_DELIVERY','Out for Delivery'),
         ('DELIVERED','Delivered'),
         ('CANCELLED','Cancelled'),
@@ -35,6 +37,7 @@ class Order(models.Model):
             
             if available_agent:
                 self.delivery_agent = available_agent
+                self.order_status = "OUT_FOR_DELIVERY"
                 available_agent.is_available = False # mark agent as busy
                 available_agent.save()
                 self.save()

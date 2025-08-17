@@ -8,3 +8,8 @@ class IsRestaurantOwnerOrAdmin(BasePermission):
             return True
         
         return obj.restaurant.owner == request.user
+    
+class IsDeliveryAgent(BasePermission):
+
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and getattr(request.user, 'role', None) == "delivery_agent"

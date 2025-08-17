@@ -35,9 +35,9 @@ class UserCreationSerializer(serializers.ModelSerializer):
         return attrs
     
     def validate_role(self,value):
-        allowed_roles=['customer','restaurant_owner'] #possible changes after delivery agent added
-        if value not in allowed_roles:
-            raise serializers.ValidationError("You can only register as a customer or a restaurant owner!")
+        not_allowed_roles=["admin"]
+        if value in not_allowed_roles:
+                raise serializers.ValidationError("You can only register as a customer or a restaurant owner!")
         
         return value
     

@@ -52,7 +52,7 @@ class RestaurantSerializer(serializers.ModelSerializer):
 
         request = self.context.get("request")
 
-        if request and (not request.user.is_authenticated or request.user.role == "customer"): #possible changes after delivery agent role
+        if request and (not request.user.is_authenticated or request.user.role in ["customer", "delivery_agent"]):
             data.pop('created_at', None)
             data.pop('updated_at', None)
 
